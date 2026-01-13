@@ -1,0 +1,7 @@
+{
+  "name": "Copy of Cable Expert Pro",
+  "description": "A professional electrical tool for cable sizing (IEC standard), counterfeit detection (weight verification), and real-time copper market tracking. Tech stack: React, Tailwind, FastAPI, SQLAlchemy, and Telegram TWA SDK.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
