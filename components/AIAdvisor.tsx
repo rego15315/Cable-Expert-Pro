@@ -1,7 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { ArrowLeft, Send, Bot, User, Sparkles, Activity, Shield } from 'lucide-react';
-import { GoogleGenAI } from '@google/genai';
 import { useTranslation } from '../App';
 
 export const AIAdvisor: React.FC<{ onBack: () => void }> = ({ onBack }) => {
@@ -23,25 +22,25 @@ export const AIAdvisor: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     setInput('');
     setLoading(true);
 
-    // Haptic feedback for TWA - Use any cast to fix Telegram type error
     if ((window as any).Telegram?.WebApp?.HapticFeedback) {
       (window as any).Telegram.WebApp.HapticFeedback.impactOccurred('medium');
     }
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: userMsg,
-        config: {
-          systemInstruction: `You are WireExpert Pro AI Advisor. Expert in IEC 60364, local electrical codes, and cable manufacturing. Answer technical questions concisely in ${lang === 'cn' ? 'Chinese' : lang === 'kh' ? 'Khmer' : 'English'}. Keep safety as top priority. Use professional engineering terminology.`,
-          temperature: 0.7,
-        }
+      // 安全调用：通过后端代理接口
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          prompt: userMsg, 
+          lang: lang 
+        })
       });
-
-      setMessages(prev => [...prev, { role: 'bot', text: response.text || 'Error processing request.' }]);
+      
+      const data = await response.json();
+      setMessages(prev => [...prev, { role: 'bot', text: data.text || 'Error processing request.' }]);
     } catch (e) {
-      setMessages(prev => [...prev, { role: 'bot', text: 'I am having trouble connecting. Please try again later.' }]);
+      setMessages(prev => [...prev, { role: 'bot', text: 'I am having trouble connecting to the specialist. Please try again later.' }]);
     } finally {
       setLoading(false);
     }
