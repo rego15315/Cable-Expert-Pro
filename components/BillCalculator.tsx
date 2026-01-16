@@ -15,7 +15,6 @@ export const BillCalculator: React.FC<{ onBack: () => void }> = ({ onBack }) => 
     const h = parseFloat(hours);
     const pr = parseFloat(price);
 
-    // Fix: Corrected iNaN to isNaN
     if (isNaN(p) || isNaN(h) || isNaN(pr)) return;
 
     const dailyKwh = p * h;
@@ -86,23 +85,25 @@ export const BillCalculator: React.FC<{ onBack: () => void }> = ({ onBack }) => 
 
       {results && (
         <div className="space-y-4 animate-in zoom-in-95 duration-500">
+           {/* 主展示项：日均电费 */}
            <div className="bg-slate-900 rounded-[40px] p-8 text-white shadow-2xl relative overflow-hidden">
               <div className="relative z-10 text-center">
-                 <p className="text-slate-500 text-[10px] font-black uppercase tracking-[0.3em]">{t.monthlyCost}</p>
+                 <p className="text-slate-500 text-[10px] font-black uppercase tracking-[0.3em]">{t.dailyCost}</p>
                  <h3 className="text-6xl font-black mt-4 flex items-baseline justify-center">
-                    <span className="text-2xl text-blue-500 mr-1">$</span>{results.monthly}
+                    <span className="text-2xl text-blue-500 mr-1">$</span>{results.daily}
                  </h3>
-                 <p className="text-[10px] text-slate-400 font-bold mt-2 uppercase tracking-widest">{results.dailyKwh} kWh / Day Average</p>
+                 <p className="text-[10px] text-slate-400 font-bold mt-2 uppercase tracking-widest">{results.dailyKwh} kWh / Day</p>
               </div>
               <div className="absolute top-0 right-0 p-8 opacity-10">
                  <Activity size={100} />
               </div>
            </div>
 
+           {/* 次要展示项：月度与年度 */}
            <div className="grid grid-cols-2 gap-4">
               <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm flex flex-col justify-center">
-                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">{t.dailyCost}</p>
-                 <p className="text-2xl font-black text-slate-800">${results.daily}</p>
+                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">{t.monthlyCost}</p>
+                 <p className="text-2xl font-black text-slate-800">${results.monthly}</p>
               </div>
               <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm flex flex-col justify-center">
                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">{t.yearlyCost}</p>
