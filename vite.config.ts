@@ -1,23 +1,29 @@
-import path from 'path';
-import { defineConfig, loadEnv } from 'vite';
+
+import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-export default defineConfig(({ mode }) => {
-    const env = loadEnv(mode, '.', '');
-    return {
-      server: {
-        port: 3000,
-        host: '0.0.0.0',
+// https://vitejs.dev/config/
+export default defineConfig({
+  plugins: [react()],
+  server: {
+    // 这里的端口是前端运行的端口
+    port: 3000,
+    proxy: {
+      // 将所有以 /api 开头的请求转发到 Python 后端
+      '/api': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        secure: false,
       },
-      plugins: [react()],
-      define: {
-        'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-        'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY)
-      },
-      resolve: {
-        alias: {
-          '@': path.resolve(__dirname, '.'),
-        }
+      // 如果需要联调 Telegram Webhook，也可以代理
+      '/tg-webhook': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
       }
-    };
+    }
+  },
+  build: {
+    outDir: 'dist',
+    sourcemap: false
+  }
 });
