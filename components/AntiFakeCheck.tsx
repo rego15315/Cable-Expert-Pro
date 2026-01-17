@@ -1,49 +1,88 @@
 
-import React, { useState } from 'react';
-import { ArrowLeft, Scale, ShieldCheck, Search, Info, CheckCircle2, AlertTriangle, Coins, TrendingUp, HelpCircle, ShieldAlert, Zap, Layers, CircleDot, Type } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ArrowLeft, ShieldCheck, Search, CheckCircle2, AlertTriangle, Coins, TrendingUp, ShieldAlert, Zap, Layers, CircleDot, Type, Ruler, Weight, Info, BarChart3, Scale } from 'lucide-react';
 import { useTranslation } from '../App';
+
+type AuditMode = 'audit' | 'visual';
 
 export const AntiFakeCheck: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const { t } = useTranslation();
-  const [tab, setTab] = useState<'value' | 'visual'>('value');
-  const [size, setSize] = useState('2.5');
+  const [tab, setTab] = useState<AuditMode>('audit');
+  
+  // 物理参数
+  const [strands, setStrands] = useState('19');
+  const [diameter, setDiameter] = useState('0.41');
   const [length, setLength] = useState('100');
+  
+  // 价格参数
   const [copperPrice, setCopperPrice] = useState('9392'); 
   const [paidPrice, setPaidPrice] = useState('150'); 
+  
+  // 结果状态
   const [result, setResult] = useState<any>(null);
+  const [isLivePrice, setIsLivePrice] = useState(false);
 
-  const sizes = ['1.0', '1.5', '2.5', '4.0', '6.0', '10', '16', '25', '35', '50', '70', '95', '120'];
+  useEffect(() => {
+    const getLivePrice = async () => {
+      try {
+        const res = await fetch('/api/market/price?range=1h');
+        const data = await res.json();
+        if (data.price) {
+          setCopperPrice(data.price.toString());
+          setIsLivePrice(true);
+        }
+      } catch (e) {
+        console.error("Failed to sync live price", e);
+      }
+    };
+    getLivePrice();
+  }, []);
 
-  const calculateValue = () => {
-    const s = parseFloat(size);
-    const l = parseFloat(length);
-    const p = parseFloat(copperPrice);
-    const retail = parseFloat(paidPrice);
+  const runAudit = () => {
+    const n = parseInt(strands);
+    const d = parseFloat(diameter);
+    const len = parseFloat(length);
+    const lmePrice = parseFloat(copperPrice);
+    const paid = parseFloat(paidPrice);
 
-    if (isNaN(s) || isNaN(l) || isNaN(p)) return;
+    if (isNaN(n) || isNaN(d) || isNaN(len) || isNaN(lmePrice) || isNaN(paid)) return;
 
-    const weightKg = s * l * 8.96 * 0.001; 
-    const rawValue = weightKg * (p / 1000); 
-
-    let status: 'safe' | 'suspicious' | 'danger' = 'safe';
-    const ratio = retail / rawValue;
-
-    if (ratio < 1.1) status = 'danger';
-    else if (ratio < 1.35) status = 'suspicious';
-    else status = 'safe';
+    // 1. 采用用户提供的特定算法计算铜重: 丝号*丝号*根数*0.7*长度/100
+    // 铜重 (kg) = d(mm) * d(mm) * n(根) * 0.7 * L(m) / 100
+    const totalCopperWeightKg = (d * d * n * 0.7 * len) / 100;
+    
+    // 计算实测截面积用于参考显示 (标准公式: PI * r^2 * n)
+    const actualArea = n * Math.PI * Math.pow(d / 2, 2);
+    
+    // 2. 价值分解
+    const rawCopperCost = totalCopperWeightKg * (lmePrice / 1000); // 纯铜原材料价格 (LME是以吨为单位)
+    
+    // 3. 价格定位分析 (描述价格属性，不作主观质量判定)
+    let status: 'safe' | 'suspicious' | 'danger' | 'overpriced' = 'safe';
+    
+    if (paid < rawCopperCost) {
+      status = 'danger'; // 价格低于裸铜价值
+    } else if (paid < rawCopperCost * 1.15) {
+      status = 'suspicious'; // 超低毛利区 (仅比裸铜贵15%)
+    } else if (paid > rawCopperCost * 2.5) {
+      status = 'overpriced'; // 品牌/渠道溢价区
+    } else {
+      status = 'safe'; // 标准市场定价区
+    }
 
     setResult({
-      weight: weightKg.toFixed(2),
-      value: rawValue.toFixed(2),
-      pricePerKg: (p / 1000).toFixed(2),
+      actualArea: actualArea.toFixed(3),
+      copperWeight: totalCopperWeightKg.toFixed(2),
+      rawCopperCost: rawCopperCost.toFixed(2),
       status,
-      ratio: ratio.toFixed(2)
+      ratio: ((rawCopperCost / paid) * 100).toFixed(1),
+      markup: (((paid - rawCopperCost) / paid) * 100).toFixed(1)
     });
   };
 
   return (
-    <div className="space-y-6 animate-in slide-in-from-right duration-300 pt-4 pb-16">
-      <div className="flex items-center space-x-3 px-1">
+    <div className="space-y-6 animate-in slide-in-from-right duration-300 pt-4 pb-16 px-1">
+      <div className="flex items-center space-x-3">
         <button onClick={onBack} className="p-2 bg-white shadow-sm border border-slate-100 rounded-full active:scale-90">
           <ArrowLeft size={20} />
         </button>
@@ -51,131 +90,175 @@ export const AntiFakeCheck: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       </div>
 
       <div className="flex bg-slate-200 p-1 rounded-2xl mx-1">
-        <button onClick={() => setTab('value')} className={`flex-1 py-2.5 rounded-xl text-xs font-black uppercase transition-all ${tab === 'value' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'}`}>{t.weightCheck}</button>
-        <button onClick={() => setTab('visual')} className={`flex-1 py-2.5 rounded-xl text-xs font-black uppercase transition-all ${tab === 'visual' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'}`}>{t.visualCheck}</button>
+        <button onClick={() => setTab('audit')} className={`flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all ${tab === 'audit' ? 'bg-white text-blue-600 shadow-sm scale-[1.02]' : 'text-slate-500'}`}>{t.weightCheck}</button>
+        <button onClick={() => setTab('visual')} className={`flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all ${tab === 'visual' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'}`}>{t.visualCheck}</button>
       </div>
 
-      {tab === 'value' ? (
-        <div className="space-y-4">
-          <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm space-y-6">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase mb-3 block tracking-widest">{t.cableType}</label>
-                <select 
-                  value={size} 
-                  onChange={e => setSize(e.target.value)} 
-                  className="w-full bg-slate-50 p-4 rounded-2xl font-black text-slate-800 outline-none appearance-none border-2 border-transparent focus:border-blue-500 transition-all"
-                >
-                  {sizes.map(s => <option key={s} value={s}>{s} mm²</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase mb-3 block tracking-widest">{t.length}</label>
-                <div className="relative">
-                  <input 
-                    type="number" 
-                    value={length} 
-                    onChange={e => setLength(e.target.value)} 
-                    className="w-full bg-slate-50 p-4 rounded-2xl font-black text-slate-800 outline-none border-2 border-transparent focus:border-blue-500"
-                  />
-                  <span className="absolute right-4 top-4 font-black text-slate-300 uppercase text-[10px]">Meters</span>
+      <div className="px-1">
+        {tab === 'audit' && (
+          <div className="space-y-4 animate-in fade-in duration-300">
+            <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm space-y-6">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center"><Layers size={12} className="mr-1.5 text-blue-500"/> {t.strandCount}</label>
+                  <input type="number" value={strands} onChange={e => setStrands(e.target.value)} className="w-full bg-slate-50 p-4 rounded-2xl font-black text-slate-800 outline-none border-2 border-transparent focus:border-blue-500" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center"><Ruler size={12} className="mr-1.5 text-blue-500"/> {t.strandDia}</label>
+                  <input type="number" step="0.01" value={diameter} onChange={e => setDiameter(e.target.value)} className="w-full bg-slate-50 p-4 rounded-2xl font-black text-slate-800 outline-none border-2 border-transparent focus:border-blue-500" />
                 </div>
               </div>
-            </div>
 
-            <div className="grid grid-cols-2 gap-4 border-t border-slate-100 pt-6">
-              <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase mb-3 block tracking-widest">{t.marketPriceRef}</label>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t.length}</label>
                 <div className="relative">
-                  <div className="absolute left-3 top-4 text-emerald-500"><TrendingUp size={16} /></div>
-                  <input 
-                    type="number" 
-                    value={copperPrice} 
-                    onChange={e => setCopperPrice(e.target.value)} 
-                    className="w-full bg-slate-50 p-4 pl-10 rounded-2xl font-bold text-slate-800 text-sm outline-none"
-                  />
+                  <input type="number" value={length} onChange={e => setLength(e.target.value)} className="w-full bg-slate-50 p-4 rounded-2xl font-black text-slate-800 outline-none" />
+                  <span className="absolute right-5 top-1/2 -translate-y-1/2 text-[10px] font-black text-slate-300">METERS</span>
                 </div>
               </div>
-              <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase mb-3 block tracking-widest">{t.retailPrice}</label>
-                <div className="relative">
-                  <div className="absolute left-3 top-4 text-blue-500"><Coins size={16} /></div>
-                  <input 
-                    type="number" 
-                    value={paidPrice} 
-                    onChange={e => setPaidPrice(e.target.value)} 
-                    className="w-full bg-slate-50 p-4 pl-10 rounded-2xl font-bold text-slate-800 text-sm outline-none border-2 border-blue-100"
-                  />
-                </div>
-              </div>
-            </div>
 
-            <button 
-              onClick={calculateValue} 
-              className="w-full py-5 bg-blue-600 text-white font-black rounded-[32px] shadow-xl active:scale-95 flex items-center justify-center space-x-2 transition-all hover:bg-blue-700"
-            >
-              <ShieldCheck size={20} />
-              <span>{t.verifyBtn}</span>
-            </button>
-          </div>
-
-          {result && (
-            <div className="space-y-4 animate-in zoom-in duration-300">
-              <div className={`p-8 rounded-[40px] shadow-2xl relative overflow-hidden transition-colors ${
-                result.status === 'safe' ? 'bg-emerald-600' : 
-                result.status === 'suspicious' ? 'bg-amber-500' : 'bg-red-600'
-              } text-white`}>
-                <div className="text-center relative z-10">
-                  <div className="flex justify-center mb-4">
-                     {result.status === 'safe' ? <CheckCircle2 size={48} /> : 
-                      result.status === 'suspicious' ? <ShieldAlert size={48} /> : <AlertTriangle size={48} />}
+              <div className="grid grid-cols-2 gap-4 pt-2 border-t border-slate-50">
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t.marketPriceRef}</label>
+                    {isLivePrice && <span className="text-[8px] bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded-full font-black uppercase">Live</span>}
                   </div>
-                  <h3 className="text-xl font-black uppercase tracking-[0.1em]">
-                    {result.status === 'safe' ? t.safeStatus : 
-                     result.status === 'suspicious' ? t.suspiciousStatus : t.dangerStatus}
-                  </h3>
-                  <div className="mt-8 grid grid-cols-2 gap-4 border-t border-white/20 pt-8">
+                  <div className="relative">
+                    <TrendingUp size={14} className="absolute left-3 top-4 text-emerald-500" />
+                    <input type="number" value={copperPrice} onChange={e => {setCopperPrice(e.target.value); setIsLivePrice(false);}} className="w-full bg-slate-50 p-4 pl-9 rounded-2xl font-bold text-slate-800 text-sm outline-none" />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t.retailPrice}</label>
+                  <div className="relative">
+                    <Coins size={14} className="absolute left-3 top-4 text-blue-500" />
+                    <input type="number" value={paidPrice} onChange={e => setPaidPrice(e.target.value)} className="w-full bg-slate-50 p-4 pl-9 rounded-2xl font-bold text-slate-800 text-sm outline-none border-2 border-blue-100" />
+                  </div>
+                </div>
+              </div>
+
+              <button onClick={runAudit} className="w-full py-5 bg-slate-900 text-white font-black rounded-[32px] shadow-xl active:scale-95 flex items-center justify-center space-x-2">
+                <ShieldCheck size={20} className="text-blue-500" /><span>{t.verifyBtn}</span>
+              </button>
+            </div>
+
+            {result && (
+              <div className="space-y-4 animate-in zoom-in duration-300">
+                <div className={`p-8 rounded-[40px] shadow-2xl relative overflow-hidden text-white transition-all duration-500 ${
+                  result.status === 'safe' ? 'bg-slate-900 border border-slate-800' : 
+                  result.status === 'suspicious' ? 'bg-emerald-700' : 
+                  result.status === 'overpriced' ? 'bg-indigo-700' : 'bg-red-600'
+                }`}>
+                  <div className="relative z-10">
+                    <div className="flex justify-between items-start mb-6">
+                       <div>
+                         <p className="text-white/40 text-[9px] font-black uppercase tracking-[0.2em]">{t.safeStatus}</p>
+                         <h3 className="text-2xl font-black mt-1 uppercase tracking-tight">
+                            {t[`${result.status}Status` as keyof typeof t]}
+                         </h3>
+                       </div>
+                       <div className="bg-white/10 p-3 rounded-2xl backdrop-blur-md border border-white/5">
+                          {result.status === 'safe' ? <BarChart3 size={24} /> : 
+                           result.status === 'suspicious' ? <Zap size={24} /> : 
+                           result.status === 'overpriced' ? <Coins size={24} /> : <AlertTriangle size={24} />}
+                       </div>
+                    </div>
+
+                    <div className="space-y-6">
+                       <div>
+                          <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-white/50 mb-2">
+                             <span>铜材价值占比 (基于新算法)</span>
+                             <span>{result.ratio}%</span>
+                          </div>
+                          <div className="h-3 bg-white/10 rounded-full overflow-hidden flex">
+                             <div className="h-full bg-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.5)]" style={{ width: `${result.ratio}%` }}></div>
+                             <div className="h-full bg-white/20" style={{ width: `${100 - result.ratio}%` }}></div>
+                          </div>
+                          <p className="text-[9px] text-white/40 mt-2 italic">{t.rangeExplain}</p>
+                       </div>
+
+                       <div className="grid grid-cols-2 gap-4 border-t border-white/10 pt-6">
+                          <div className="space-y-1">
+                             <p className="text-[9px] text-white/40 font-black uppercase tracking-widest">{t.rawCopperCost}</p>
+                             <p className="text-2xl font-black">${result.rawCopperCost}</p>
+                          </div>
+                          <div className="space-y-1 text-right">
+                             <p className="text-[9px] text-white/40 font-black uppercase tracking-widest">预估溢价率</p>
+                             <p className="text-2xl font-black">{Math.max(0, parseFloat(result.markup))}%</p>
+                          </div>
+                       </div>
+
+                       <div className="bg-white/5 p-4 rounded-3xl flex items-center justify-between border border-white/5">
+                          <div className="flex items-center space-x-3">
+                             <Weight size={16} className="text-white/40" />
+                             <div>
+                                <p className="text-[8px] text-white/40 font-black uppercase tracking-widest">计算铜重</p>
+                                <p className="text-sm font-black">{result.copperWeight} kg</p>
+                             </div>
+                          </div>
+                          <div className="text-right">
+                             <p className="text-[8px] text-white/40 font-black uppercase tracking-widest">标称截面参考</p>
+                             <p className="text-sm font-black">{result.actualArea} mm²</p>
+                          </div>
+                       </div>
+                    </div>
+                  </div>
+                  <div className="absolute top-0 right-0 p-8 opacity-[0.03] -rotate-12"><Scale size={180} /></div>
+                </div>
+
+                {/* 说明区块 */}
+                {result.status === 'danger' && (
+                  <div className="bg-red-50 p-6 rounded-[32px] border-2 border-red-100 flex items-start space-x-4">
+                    <AlertTriangle className="text-red-600 shrink-0 mt-1" />
                     <div>
-                      <p className="text-[9px] text-white/60 font-black uppercase mb-1">{t.copperValue}</p>
-                      <p className="text-2xl font-black">${result.value}</p>
+                      <p className="text-sm font-black text-red-900">{t.dangerStatus}</p>
+                      <p className="text-xs text-red-700 mt-1 font-medium leading-relaxed">{t.substandardDesc}</p>
+                    </div>
+                  </div>
+                )}
+                
+                {result.status === 'suspicious' && (
+                  <div className="bg-emerald-50 p-6 rounded-[32px] border-2 border-emerald-100 flex items-start space-x-4">
+                    <Info className="text-emerald-600 shrink-0 mt-1" />
+                    <div>
+                      <p className="text-sm font-black text-emerald-900">{t.suspiciousStatus}</p>
+                      <p className="text-xs text-emerald-700 mt-1 font-medium leading-relaxed">{t.lowPriceWarning}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab === 'visual' && (
+          <div className="space-y-4 animate-in fade-in duration-300">
+            <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm space-y-4">
+              <h3 className="font-black text-slate-800 text-sm uppercase tracking-widest flex items-center mb-2">
+                <Search size={16} className="mr-2 text-blue-600"/> {t.inspectionTitle}
+              </h3>
+              <div className="space-y-4">
+                {[
+                  { title: t.copperColorTitle, desc: t.copperColorDesc, icon: Zap, color: 'bg-orange-100 text-orange-600' },
+                  { title: t.insulationTitle, desc: t.insulationDesc, icon: Layers, color: 'bg-blue-100 text-blue-600' },
+                  { title: t.concentricTitle, desc: t.concentricDesc, icon: CircleDot, color: 'bg-emerald-100 text-emerald-600' },
+                  { title: t.markingTitle, desc: t.markingDesc, icon: Type, color: 'bg-slate-100 text-slate-600' }
+                ].map((item, idx) => (
+                  <div key={idx} className="flex space-x-4 p-5 bg-slate-50 rounded-[28px] border border-slate-100 transition-all hover:bg-white hover:shadow-md">
+                    <div className={`mt-1 ${item.color} p-3 rounded-2xl h-fit`}>
+                      <item.icon size={22} />
                     </div>
                     <div>
-                      <p className="text-[9px] text-white/60 font-black uppercase mb-1">Copper/Retail Ratio</p>
-                      <p className="text-2xl font-black">{Math.round((1/result.ratio) * 100)}%</p>
+                      <p className="text-sm font-black text-slate-800">{item.title}</p>
+                      <p className="text-[11px] text-slate-500 leading-relaxed mt-2 font-medium">{item.desc}</p>
                     </div>
                   </div>
-                </div>
+                ))}
               </div>
             </div>
-          )}
-        </div>
-      ) : (
-        <div className="space-y-4 px-1">
-          <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm space-y-4">
-            <h3 className="font-black text-slate-800 text-sm uppercase tracking-widest flex items-center mb-2">
-              <Search size={16} className="mr-2 text-blue-600"/> {t.inspectionTitle}
-            </h3>
-            <div className="space-y-4">
-              {[
-                { title: t.copperColorTitle, desc: t.copperColorDesc, icon: Zap, color: 'bg-orange-100 text-orange-600' },
-                { title: t.insulationTitle, desc: t.insulationDesc, icon: Layers, color: 'bg-blue-100 text-blue-600' },
-                { title: t.concentricTitle, desc: t.concentricDesc, icon: CircleDot, color: 'bg-emerald-100 text-emerald-600' },
-                { title: t.markingTitle, desc: t.markingDesc, icon: Type, color: 'bg-slate-100 text-slate-600' }
-              ].map((item, idx) => (
-                <div key={idx} className="flex space-x-4 p-5 bg-slate-50 rounded-[28px] border border-slate-100 transition-all hover:bg-white hover:shadow-md">
-                  <div className={`mt-1 ${item.color} p-3 rounded-2xl h-fit`}>
-                    <item.icon size={22} />
-                  </div>
-                  <div>
-                    <p className="text-sm font-black text-slate-800">{item.title}</p>
-                    <p className="text-[11px] text-slate-500 leading-relaxed mt-2 font-medium">{item.desc}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 };

@@ -1,5 +1,5 @@
 import os
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from api.bot import setup_bot
@@ -14,7 +14,6 @@ load_dotenv()
 
 app = FastAPI(title="WireExpert Pro Backend")
 
-# 配置 CORS，允许本地开发联调
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -22,12 +21,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 初始化 Bot
 bot_app = setup_bot()
 
-# 初始化定时任务
 scheduler = AsyncIOScheduler()
-scheduler.add_job(MarketService.fetch_copper_price, 'interval', minutes=30)
+# 每小时抓取一次真实价格
+scheduler.add_job(MarketService.fetch_copper_price, 'interval', hours=1)
+# 每天清理一次旧数据
+scheduler.add_job(MarketService.cleanup_old_data, 'cron', hour=3)
 
 @app.on_event("startup")
 async def on_startup():
@@ -37,10 +37,11 @@ async def on_startup():
         if webhook_url:
             await bot_app.bot.set_webhook(url=webhook_url)
     scheduler.start()
+    # 启动时先抓取一次
+    MarketService.fetch_copper_price()
 
 @app.post("/tg-webhook")
 async def telegram_webhook(request: Request):
-    """接收来自 Telegram 的 Webhook 推送"""
     if not bot_app: return {"ok": False}
     data = await request.json()
     update = Update.de_json(data, bot_app.bot)
@@ -49,17 +50,15 @@ async def telegram_webhook(request: Request):
 
 @app.post("/api/calculate")
 async def calculate_api(data: dict):
-    """电缆选型接口"""
     return CableCalculatorService.calculate(data)
 
 @app.get("/api/market/price")
-async def market_api():
-    """行情数据接口"""
-    return MarketService.get_market_data()
+async def market_api(range: str = Query("1h")):
+    """行情数据接口，支持 range=1h, 1d, 1m"""
+    return MarketService.get_market_data(range)
 
 @app.post("/api/chat")
 async def chat_api(data: dict):
-    """AI 代理接口"""
     prompt = data.get('prompt', '')
     lang = data.get('lang', 'cn')
     answer = await AIService.chat(prompt, lang)

@@ -6,3 +6,5 @@ google-generativeai
 apscheduler
 pydantic
 httpx
+yfinance
+sqlalchemy
