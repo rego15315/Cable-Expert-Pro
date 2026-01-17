@@ -9,7 +9,7 @@ export const AntiFakeCheck: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const { t } = useTranslation();
   const [tab, setTab] = useState<AuditMode>('audit');
   
-  // 物理参数 - 移除了默认值
+  // 物理参数 - 移除了默认值以满足用户需求
   const [strands, setStrands] = useState('');
   const [diameter, setDiameter] = useState('');
   const [length, setLength] = useState('');
@@ -26,10 +26,16 @@ export const AntiFakeCheck: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const getLivePrice = async () => {
       try {
         const res = await fetch('/api/market/price?range=1h');
-        const data = await res.json();
-        if (data.price) {
-          setCopperPrice(data.price.toString());
-          setIsLivePrice(true);
+        // Robust check for response integrity to prevent the reported JSON character error
+        if (res.ok) {
+          const contentType = res.headers.get("content-type");
+          if (contentType && contentType.includes("application/json")) {
+            const data = await res.json();
+            if (data && data.price) {
+              setCopperPrice(data.price.toString());
+              setIsLivePrice(true);
+            }
+          }
         }
       } catch (e) {
         console.error("Failed to sync live price", e);
@@ -45,6 +51,7 @@ export const AntiFakeCheck: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const lmePrice = parseFloat(copperPrice);
     const paid = parseFloat(paidPrice);
 
+    // Basic validation
     if (isNaN(n) || isNaN(d) || isNaN(len) || isNaN(lmePrice) || isNaN(paid)) {
       if ((window as any).Telegram?.WebApp?.HapticFeedback) {
         (window as any).Telegram.WebApp.HapticFeedback.notificationOccurred('error');
@@ -53,19 +60,26 @@ export const AntiFakeCheck: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     }
 
     // 1. 采用用户提供的特定算法计算铜重: 丝号*丝号*根数*0.7*长度/100
+    // 铜重 (kg) = d(mm) * d(mm) * n(根) * 0.7 * L(m) / 100
     const totalCopperWeightKg = (d * d * n * 0.7 * len) / 100;
+    
+    // 计算实测截面积用于参考显示 (标准公式: PI * r^2 * n)
     const actualArea = n * Math.PI * Math.pow(d / 2, 2);
+    
+    // 2. 价值分解
     const rawCopperCost = totalCopperWeightKg * (lmePrice / 1000); 
     
+    // 3. 价格定位分析 (不再判定是否非标，而是客观描述价格在成本结构中的位置)
     let status: 'safe' | 'suspicious' | 'danger' | 'overpriced' = 'safe';
+    
     if (paid < rawCopperCost) {
-      status = 'danger';
+      status = 'danger'; // 价格低于裸铜价值，物理逻辑上存在异常
     } else if (paid < rawCopperCost * 1.15) {
-      status = 'suspicious';
+      status = 'suspicious'; // 超低毛利区
     } else if (paid > rawCopperCost * 2.5) {
-      status = 'overpriced';
+      status = 'overpriced'; // 品牌溢价或渠道成本较高
     } else {
-      status = 'safe';
+      status = 'safe'; // 标准市场定价区
     }
 
     setResult({
@@ -127,7 +141,7 @@ export const AntiFakeCheck: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                   </div>
                   <div className="relative">
                     <TrendingUp size={14} className="absolute left-3 top-4 text-emerald-500" />
-                    <input type="number" value={copperPrice} onChange={e => {setCopperPrice(e.target.value); setIsLivePrice(false);}} className="w-full bg-slate-50 p-4 pl-9 rounded-2xl font-bold text-slate-800 text-sm outline-none" />
+                    <input type="number" value={copperPrice} onChange={e => {setCopperPrice(e.target.value); setIsLivePrice(false);}} className="w-full bg-slate-50 p-4 pl-9 rounded-2xl font-bold text-slate-800 text-sm outline-none transition-all" />
                   </div>
                 </div>
                 <div className="space-y-2">
@@ -207,6 +221,27 @@ export const AntiFakeCheck: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                   </div>
                   <div className="absolute top-0 right-0 p-8 opacity-[0.03] -rotate-12"><Scale size={180} /></div>
                 </div>
+
+                {/* 仅在低于铜成本时显示详细说明，避免主观评判正常低毛利产品 */}
+                {result.status === 'danger' && (
+                  <div className="bg-red-50 p-6 rounded-[32px] border-2 border-red-100 flex items-start space-x-4">
+                    <AlertTriangle className="text-red-600 shrink-0 mt-1" />
+                    <div>
+                      <p className="text-sm font-black text-red-900">{t.dangerStatus}</p>
+                      <p className="text-xs text-red-700 mt-1 font-medium leading-relaxed">{t.substandardDesc}</p>
+                    </div>
+                  </div>
+                )}
+                
+                {result.status === 'suspicious' && (
+                  <div className="bg-emerald-50 p-6 rounded-[32px] border-2 border-emerald-100 flex items-start space-x-4">
+                    <Info className="text-emerald-600 shrink-0 mt-1" />
+                    <div>
+                      <p className="text-sm font-black text-emerald-900">{t.suspiciousStatus}</p>
+                      <p className="text-xs text-emerald-700 mt-1 font-medium leading-relaxed">{t.lowPriceWarning}</p>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -218,7 +253,7 @@ export const AntiFakeCheck: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             <div className="bg-blue-600 text-white p-6 rounded-[32px] shadow-lg flex items-center justify-between relative overflow-hidden">
                <div className="relative z-10">
                  <h3 className="text-sm font-black uppercase tracking-widest mb-1">{t.inspectionTitle}</h3>
-                 <p className="text-[10px] text-blue-100 font-medium">Follow these professional steps for audit.</p>
+                 <p className="text-[10px] text-blue-100 font-medium tracking-tight">Follow these professional steps for physical audit.</p>
                </div>
                <ShieldCheck size={40} className="relative z-10 opacity-50" />
                <div className="absolute -bottom-4 -right-4 opacity-10"><Zap size={100} /></div>
