@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, TrendingUp, Globe, RefreshCcw, Activity } from 'lucide-react';
 import { AreaChart, Area, ResponsiveContainer, XAxis, YAxis, Tooltip } from 'recharts';
@@ -13,10 +14,15 @@ export const MarketBoard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     setLoading(true);
     try {
       const res = await fetch(`/api/market/price?range=${range}`);
-      const json = await res.json();
-      setData(json);
+      if (res.ok) {
+        const contentType = res.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+          const json = await res.json();
+          setData(json);
+        }
+      }
     } catch (e) {
-      console.error(e);
+      console.error("Market fetch error:", e);
     } finally {
       setLoading(false);
     }
